@@ -63,6 +63,7 @@ services:
     depends_on: [api]
     volumes:
       - ./apps/web:/app
+      - /app/node_modules
 
   portal:
     build:
@@ -76,6 +77,7 @@ services:
     depends_on: [api]
     volumes:
       - ./apps/portal:/app
+      - /app/node_modules
 
 volumes:
   nyra-pg:
