@@ -1,0 +1,81 @@
+# Nyra Service Tool - local development stack
+# postgres uses host port 5433 because a native PostgreSQL 16 service already owns 5432
+name: nyra
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nyra-postgres
+    environment:
+      POSTGRES_USER: nyra
+      POSTGRES_PASSWORD: nyra
+      POSTGRES_DB: nyra
+    ports:
+      - "5433:5432"
+    volumes:
+      - nyra-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nyra -d nyra"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: nyra-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/api.Dockerfile
+    container_name: nyra-api
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://nyra:nyra@postgres:5432/nyra
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./db:/app/db
+    command: >
+      sh -c "python -m nyra_api.cli db:migrate && python -m nyra_api.cli db:seed &&
+             uvicorn nyra_api.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/web.Dockerfile
+    container_name: nyra-web
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on: [api]
+    volumes:
+      - ./apps/web:/app
+
+  portal:
+    build:
+      context: .
+      dockerfile: infra/portal.Dockerfile
+    container_name: nyra-portal
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+    ports:
+      - "3001:3000"
+    depends_on: [api]
+    volumes:
+      - ./apps/portal:/app
+
+volumes:
+  nyra-pg:
